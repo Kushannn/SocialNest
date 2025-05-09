@@ -2,9 +2,11 @@
 
 import { connectToDB } from "@/lib/mongodb";
 import Follow from "@/models/follows";
+import notification from "@/models/notification";
 import Post from "@/models/post";
 import User from "@/models/user";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import mongoose from "mongoose";
 
 // Function to sync user information
 export async function syncUser() {
@@ -40,9 +42,11 @@ export async function getUserByClerkId(clerkId: string) {
   try {
     await connectToDB(); // Ensure the DB is connected
 
-    const user = await User.findOne({ clerkId });
+    const userDoc = await User.findOne({ clerkId });
 
-    if (!user) return null;
+    if (!userDoc) return null;
+
+    const user = userDoc.toObject();
 
     const userId = user._id;
 
@@ -71,11 +75,104 @@ export async function getUserByClerkId(clerkId: string) {
 export async function getDBUserId() {
   const { userId: clerkId } = await auth();
 
+  console.log("This is the clerk id ", clerkId);
+
   if (!clerkId) throw new Error("Unauthorized");
 
   const user = await getUserByClerkId(clerkId);
 
-  if (!user) throw new Error("User not found ");
+  console.log("This is the user ", user);
+
+  if (!user) {
+    console.log("This is the error if user is not found ");
+    throw new Error("User not found");
+  }
 
   return user._id;
+}
+
+export async function getSuggestedUsers() {
+  try {
+    await connectToDB();
+
+    const userId = await getDBUserId();
+    if (!userId) return [];
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const currentUser = await User.findById(userObjectId).select("following");
+
+    const followingList: mongoose.Types.ObjectId[] =
+      currentUser?.following || [];
+
+    //get 3 random users , excluding us and the ones we follow
+    const suggestedUsers = await User.aggregate([
+      {
+        $match: {
+          _id: { $ne: userObjectId, $nin: followingList },
+        },
+      },
+      {
+        $project: {
+          id: "$_id",
+          name: 1,
+          username: 1,
+          image: 1,
+          followersCount: { $size: "$followers" },
+        },
+      },
+      { $sample: { size: 3 } },
+    ]);
+
+    return suggestedUsers;
+  } catch (error) {
+    console.error("error getting the suggested users");
+  }
+}
+
+export async function toggleFollow(userToFollowId: string) {
+  try {
+    await connectToDB();
+
+    const currentUserId = await getDBUserId();
+
+    if (currentUserId === userToFollowId)
+      throw new Error("You cannot follow yourself");
+
+    //person who is following
+    const followerObjectId = new mongoose.Types.ObjectId(currentUserId);
+
+    // person whom he wants to follow
+    const followingObjectId = new mongoose.Types.ObjectId(userToFollowId);
+
+    const alreadyFollow = await Follow.findOne({
+      followerId: followerObjectId,
+      followingId: followingObjectId,
+    });
+
+    if (alreadyFollow) {
+      await Follow.deleteOne({
+        followerId: followerObjectId,
+        followingId: followingObjectId,
+      });
+    } else {
+      await Promise.all([
+        Follow.create({
+          followerId: followerObjectId,
+          followingObjectId: followingObjectId,
+        }),
+
+        notification.create({
+          type: "FOLLOW",
+          userId: followingObjectId, // person who is being followed
+          creatorId: followerObjectId, // person who is following
+        }),
+      ]);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error in the follow action ", error);
+    return { success: false, error: "Error toggling follow" };
+  }
 }

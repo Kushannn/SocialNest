@@ -26,7 +26,7 @@ async function Sidebar() {
               className="flex flex-col items-center justify-center"
             >
               <Avatar className="w-20 h-20 border-2 ">
-                <AvatarImage src={user._doc.image} />
+                <AvatarImage src={user.image} />
               </Avatar>
               <div className="mt-4 space-y-1">
                 <h3 className="font-semibold">{user.name}</h3>

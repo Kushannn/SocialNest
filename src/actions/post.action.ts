@@ -21,7 +21,9 @@ export async function createPost(content: string, imageUrl: string) {
 
     revalidatePath("/"); // purge the cache for home page ( save the post and then redirect to home page)
 
-    return { success: true, post };
+    console.log("This is the post ", postToUpload);
+
+    return { success: true, postToUpload };
   } catch (error) {
     console.log("Failed to create the post ", error);
     return { success: false, error: "Failed to create the post" };

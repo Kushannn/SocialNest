@@ -10,8 +10,6 @@ async function RecommendedUsers() {
 
   if (users?.length === 0) return null;
 
-  console.log("users ? ", users);
-
   return (
     <Card>
       <CardHeader>

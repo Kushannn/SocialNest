@@ -7,6 +7,7 @@ import Post from "@/models/post";
 import User from "@/models/user";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import mongoose from "mongoose";
+import { revalidatePath } from "next/cache";
 
 // Function to sync user information
 export async function syncUser() {
@@ -75,13 +76,13 @@ export async function getUserByClerkId(clerkId: string) {
 export async function getDBUserId() {
   const { userId: clerkId } = await auth();
 
-  console.log("This is the clerk id ", clerkId);
+  // console.log("This is the clerk id ", clerkId);
 
   if (!clerkId) throw new Error("Unauthorized");
 
   const user = await getUserByClerkId(clerkId);
 
-  console.log("This is the user ", user);
+  // console.log("This is the user ", user);
 
   if (!user) {
     console.log("This is the error if user is not found ");
@@ -114,7 +115,7 @@ export async function getSuggestedUsers() {
       },
       {
         $project: {
-          id: "$_id",
+          id: { $toString: "$_id" },
           name: 1,
           username: 1,
           image: 1,
@@ -159,7 +160,7 @@ export async function toggleFollow(userToFollowId: string) {
       await Promise.all([
         Follow.create({
           followerId: followerObjectId,
-          followingObjectId: followingObjectId,
+          followingId: followingObjectId,
         }),
 
         notification.create({
@@ -169,6 +170,8 @@ export async function toggleFollow(userToFollowId: string) {
         }),
       ]);
     }
+
+    revalidatePath("/");
 
     return { success: true };
   } catch (error) {

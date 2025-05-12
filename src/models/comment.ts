@@ -9,22 +9,25 @@ export interface IComment extends Document {
   updatedAt: Date;
 }
 
-const CommentSchema = new Schema<IComment>({
-  content: { type: String, required: true },
-  authorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+const CommentSchema = new Schema<IComment>(
+  {
+    content: { type: String, required: true },
+    authorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    postId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Post",
+      required: true,
+    },
+    notifications: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Notification" },
+    ],
   },
-  postId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Post",
-    required: true,
-  },
-  notifications: [
-    { type: mongoose.Schema.Types.ObjectId, ref: "Notification" },
-  ],
-});
+  { timestamps: true }
+);
 
 CommentSchema.index({ authorId: 1, postId: 1 });
 

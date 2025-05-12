@@ -1,27 +1,22 @@
-// utils/sanitizeMongoDoc.ts
-
-export function sanitizeMongoDoc(doc: any): any {
+export function sanitizeMongoDoc(doc: any, seen = new WeakMap()): any {
   if (Array.isArray(doc)) {
-    return doc.map(sanitizeMongoDoc);
+    return doc.map((item) => sanitizeMongoDoc(item, seen));
   }
 
   if (doc && typeof doc === "object") {
-    const newObj: Record<string, any> = {};
-    for (const key in doc) {
-      const value = doc[key];
+    if (seen.has(doc)) return seen.get(doc); // 🛠 return cached version
 
-      // Handle _id or any ObjectId
-      if ((key === "_id" || key.endsWith("Id")) && isObjectId(value)) {
-        newObj[key] = value.toString();
-      } else if (Array.isArray(value)) {
-        newObj[key] = value.map(sanitizeMongoDoc);
-      } else if (typeof value === "object" && value !== null) {
-        newObj[key] = sanitizeMongoDoc(value);
-      } else {
-        newObj[key] = value;
-      }
+    if (isObjectId(doc)) return doc.toString();
+    if (doc instanceof Date) return doc.toISOString();
+
+    const result: Record<string, any> = {};
+    seen.set(doc, result); // 🛠 store placeholder early to prevent recursion loops
+
+    for (const key in doc) {
+      result[key] = sanitizeMongoDoc(doc[key], seen);
     }
-    return newObj;
+
+    return result;
   }
 
   return doc;

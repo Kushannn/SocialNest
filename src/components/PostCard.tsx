@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
-import { postType } from "@/types/post";
+import {
+  createComment,
+  deletePost,
+  getPosts,
+  toggleLike,
+} from "@/actions/post.action";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { createComment, deletePost, toggleLike } from "@/actions/post.action";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Card, CardContent } from "./ui/card";
 import Link from "next/link";
@@ -18,15 +22,13 @@ import {
   SendIcon,
 } from "lucide-react";
 import { Textarea } from "./ui/textarea";
+import type { Post } from "@/types/types";
 
-function PostCard({
-  post,
-  dbUserId,
-}: {
-  post: postType;
-  dbUserId: string | null;
-}) {
-  const user = useUser();
+// type Posts = Awaited<ReturnType<typeof getPosts>>;
+// type NewPostType = Posts[number];
+
+function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
+  const { user } = useUser();
   const [newComment, setNewComment] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
@@ -34,7 +36,7 @@ function PostCard({
   const [hasLiked, setHasLiked] = useState(
     post.likes.some((like) => like.userId === dbUserId)
   );
-  const [optimisticLikes, setOptimisticLikes] = useState(post._count.likes);
+  const [optimisticLikes, setOptmisticLikes] = useState(post._count.likes);
   const [showComments, setShowComments] = useState(false);
 
   const handleLike = async () => {
@@ -42,10 +44,10 @@ function PostCard({
     try {
       setIsLiking(true);
       setHasLiked((prev) => !prev);
-      setOptimisticLikes((prev) => prev + (hasLiked ? -1 : +1));
+      setOptmisticLikes((prev) => prev + (hasLiked ? -1 : 1));
       await toggleLike(post._id);
     } catch (error) {
-      setOptimisticLikes(post._count.likes);
+      setOptmisticLikes(post._count.likes);
       setHasLiked(post.likes.some((like) => like.userId === dbUserId));
     } finally {
       setIsLiking(false);
@@ -54,7 +56,6 @@ function PostCard({
 
   const handleAddComment = async () => {
     if (!newComment.trim() || isCommenting) return;
-
     try {
       setIsCommenting(true);
       const result = await createComment(post._id, newComment);
@@ -63,7 +64,7 @@ function PostCard({
         setNewComment("");
       }
     } catch (error) {
-      toast.error("Failed to add the comment");
+      toast.error("Failed to add comment");
     } finally {
       setIsCommenting(false);
     }
@@ -71,14 +72,13 @@ function PostCard({
 
   const handleDeletePost = async () => {
     if (isDeleting) return;
-
     try {
       setIsDeleting(true);
       const result = await deletePost(post._id);
       if (result.success) toast.success("Post deleted successfully");
       else throw new Error(result.error);
     } catch (error) {
-      toast.error("Failed to delete the post");
+      toast.error("Failed to delete post");
     } finally {
       setIsDeleting(false);
     }
@@ -95,6 +95,7 @@ function PostCard({
               </Avatar>
             </Link>
 
+            {/* POST HEADER & TEXT CONTENT */}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-2 truncate">
@@ -127,6 +128,8 @@ function PostCard({
               </p>
             </div>
           </div>
+
+          {/* POST IMAGE */}
           {post.image && (
             <div className="rounded-lg overflow-hidden">
               <img
@@ -137,6 +140,7 @@ function PostCard({
             </div>
           )}
 
+          {/* LIKE & COMMENT BUTTONS */}
           <div className="flex items-center pt-2 space-x-4">
             {user ? (
               <Button
@@ -184,6 +188,7 @@ function PostCard({
             </Button>
           </div>
 
+          {/* COMMENTS SECTION */}
           {showComments && (
             <div className="space-y-4 pt-4 border-t">
               <div className="space-y-4">
@@ -217,7 +222,7 @@ function PostCard({
               {user ? (
                 <div className="flex space-x-3">
                   <Avatar className="size-8 flex-shrink-0">
-                    <AvatarImage src={user.user?.imageUrl || "/avatar.png"} />
+                    <AvatarImage src={user?.imageUrl || "/avatar.png"} />
                   </Avatar>
                   <div className="flex-1">
                     <Textarea
@@ -262,5 +267,4 @@ function PostCard({
     </Card>
   );
 }
-
 export default PostCard;

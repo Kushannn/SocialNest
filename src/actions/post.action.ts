@@ -28,11 +28,15 @@ export async function createPost(content: string, imageUrl: string) {
       authorId: userId,
     });
 
-    revalidatePath("/"); // purge the cache for home page ( save the post and then redirect to home page)
+    revalidatePath("/");
 
-    // console.log("This is the post ", postToUpload);
+    const newPostToSend = {
+      content: postToUpload.content,
+      imageUrl: postToUpload.imageUrl,
+      authorId: postToUpload.authorId.toString(),
+    };
 
-    return { success: true, postToUpload };
+    return { success: true, newPostToSend };
   } catch (error) {
     console.log("Failed to create the post ", error);
     return { success: false, error: "Failed to create the post" };
@@ -53,6 +57,7 @@ export async function getPosts() {
       .populate({
         path: "comments",
         options: { sort: { createdAt: 1 } },
+        select: "authorId content createdAt", // Explicitly select createdAt
         populate: {
           path: "authorId",
           select: "id username image name",
@@ -63,6 +68,8 @@ export async function getPosts() {
         select: "userId",
       })
       .lean();
+
+    // console.log("The posts recieved from the backend", posts);
 
     type SanitizedPost = {
       _id: string;
@@ -84,14 +91,16 @@ export async function getPosts() {
     const finalPosts = (sanitizeMongoDoc(posts) as SanitizedPost[]).map(
       (post) => ({
         ...post,
-        createdAt: post.createdAt.toString(),
-        updatedAt: post.updatedAt.toString(),
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
         _count: {
           likes: post.likes?.length || 0,
           comments: post.comments?.length || 0,
         },
       })
     );
+
+    // console.log("The finalPosts are ", finalPosts);
 
     return finalPosts;
   } catch (error) {
@@ -115,7 +124,7 @@ export async function toggleLike(postId: string) {
 
     const currentPost = await post.findById(postId).select("authorId");
 
-    if (!post) return;
+    if (!currentPost) return;
 
     const session = await post.startSession();
     session.startTransaction();
@@ -126,7 +135,7 @@ export async function toggleLike(postId: string) {
           userId: new ObjectId(userId),
           postId: new ObjectId(postId),
         },
-        session
+        { session }
       );
     } else {
       await like.create(
@@ -140,20 +149,27 @@ export async function toggleLike(postId: string) {
       );
 
       if (currentPost.authorId.toString() !== userId) {
-        await notification.create([
-          {
-            type: "LIKE",
-            userId: new ObjectId(currentPost.authorId),
-            creatorId: new ObjectId(userId),
-            postId: new ObjectId(postId),
-            read: false,
-            createdAt: new Date(),
-          },
-        ]);
+        await notification.create(
+          [
+            {
+              type: "LIKE",
+              userId: new ObjectId(currentPost.authorId),
+              creatorId: new ObjectId(userId),
+              postId: new ObjectId(postId),
+              read: false,
+              createdAt: new Date(),
+            },
+          ],
+          { session }
+        );
       }
-
-      return { success: true };
     }
+
+    await session.commitTransaction();
+
+    revalidatePath("/");
+
+    return { success: true };
   } catch (error) {
     console.error("Failed to toggle like:", error);
     return { success: false, error: "Failed to toggle like" };
@@ -175,20 +191,28 @@ export async function createComment(postId: string, content: string) {
 
     const currentPost = await post
       .findById(postId)
-      .select("authorId")
+      .select("authorId comments") // Ensure comments field is selected for updating
       .session(session);
 
     if (!currentPost) throw new Error("No post found");
 
+    // Create the new comment
     const newComment = new comment({
       content,
       authorId: new mongoose.Types.ObjectId(userId),
       postId: new mongoose.Types.ObjectId(postId),
+      // createdAt: new Date(),
     });
 
+    // Save the new comment
     await newComment.save({ session });
 
-    if (currentPost.authorId.toString() !== userId) {
+    // Add the new comment ID to the post's comments array
+    currentPost.comments.push(newComment._id); // Add the comment's ID to the post's comments array
+    await currentPost.save({ session }); // Save the post with the updated comments array
+
+    // If the comment is not from the post author, create a notification
+    if (currentPost.authorId.toString() !== userId.toString()) {
       const newNotification = new notification({
         type: "COMMENT",
         userId: new mongoose.Types.ObjectId(currentPost.authorId),
@@ -200,12 +224,21 @@ export async function createComment(postId: string, content: string) {
       await newNotification.save({ session });
     }
 
-    await session.commitTransaction;
+    await session.commitTransaction();
     session.endSession();
 
+    const safeComment = {
+      _id: newComment._id.toString(),
+      content: newComment.content,
+      authorId: newComment.authorId.toString(),
+      postId: newComment.postId.toString(),
+      // createdAt: newComment.createdAt,
+    };
+
+    // Revalidate the page or path to reflect the updated post
     revalidatePath("/");
 
-    return { success: true, newComment };
+    return { success: true, safeComment };
   } catch (error) {
     console.error("Failed to create comment:", error);
     return { success: false, error: "Failed to create comment" };
@@ -222,7 +255,8 @@ export async function deletePost(postId: string) {
 
     if (!currentPost) throw new Error("Post not found");
 
-    if (currentPost.authorId !== userId) throw new Error("Unauthorized ");
+    if (currentPost.authorId.toString() !== userId.toString())
+      throw new Error("Unauthorized ");
 
     await post.deleteOne({ _id: postId });
 

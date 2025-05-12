@@ -73,21 +73,14 @@ export async function getUserByClerkId(clerkId: string) {
 
 // getting just the id of the user from the database
 
-export async function getDBUserId() {
-  const { userId: clerkId } = await auth();
+export async function getDBUserId(clerkId?: string) {
+  const { userId: sessionUserId } = await auth();
+  const clerkIdToUse = clerkId || sessionUserId;
 
-  // console.log("This is the clerk id ", clerkId);
+  if (!clerkIdToUse) throw new Error("Unauthorized");
 
-  if (!clerkId) throw new Error("Unauthorized");
-
-  const user = await getUserByClerkId(clerkId);
-
-  // console.log("This is the user ", user);
-
-  if (!user) {
-    console.log("This is the error if user is not found ");
-    throw new Error("User not found");
-  }
+  const user = await getUserByClerkId(clerkIdToUse);
+  if (!user) throw new Error("User not found");
 
   return user._id;
 }

@@ -71,6 +71,7 @@ export async function getUserPosts(userId: string) {
 
     const newPosts = currentPosts.map((post) => ({
       ...post,
+      _id: String(post._id),
       authorId: post.authorId,
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
